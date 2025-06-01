@@ -86,7 +86,6 @@ int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
         estado_led ? "Ligado" : "Desligado", temp);
 }
 
-
 // Callback para tratamento das requisições HTTP recebidas pelo servidor
 err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (!p) return tcp_close(pcb);
