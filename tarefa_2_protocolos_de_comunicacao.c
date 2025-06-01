@@ -59,16 +59,33 @@ void atualizar_oled(bool led, float temp) {
 // Gera dinamicamente uma página HTML contendo o estado do LED e a temperatura atual
 int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
     return snprintf(buffer, max_len,
-        "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Controle Pico W</title></head>"
-        "<body style='text-align:center;font-family:Arial;'>"
-        "<h1>Servidor Pico W</h1>"
-        "<p>Status do LED: <strong>%s</strong></p>"
-        "<p>Temperatura: <strong>%.2f &deg;C</strong></p>"
-        "<a href='/?led=on'><button style='padding:15px;'>Ligar LED</button></a><br><br>"
-        "<a href='/?led=off'><button style='padding:15px;'>Desligar LED</button></a>"
-        "</body></html>",
+        "<!DOCTYPE html>"
+        "<html lang='pt-BR'>"
+        "<head>"
+        "<meta charset='UTF-8'>"
+        "<title>Controle Pico W</title>"
+        "<style>"
+            "body {font-family:Arial;text-align:center;margin-top:50px;}"
+            ".botao {"
+                "padding:10px 20px;font-size:16px;border:none;border-radius:5px;color:#fff;margin:10px;"
+            "}"
+            ".ligar {background-color:#28a745;}"
+            ".desligar {background-color:#dc3545;}"
+            ".card {padding:15px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.3);display:inline-block;}"
+        "</style>"
+        "</head>"
+        "<body>"
+        "<div class='card'>"
+            "<h3>Status do LED: %s</h3>"
+            "<h3>Temperatura: %.2f &deg;C</h3>"
+            "<a href='/?led=on'><button class='botao ligar'>Ligar LED</button></a>"
+            "<a href='/?led=off'><button class='botao desligar'>Desligar LED</button></a>"
+        "</div>"
+        "</body>"
+        "</html>",
         estado_led ? "Ligado" : "Desligado", temp);
 }
+
 
 // Callback para tratamento das requisições HTTP recebidas pelo servidor
 err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
