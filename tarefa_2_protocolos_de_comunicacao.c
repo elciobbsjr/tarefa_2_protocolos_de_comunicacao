@@ -27,9 +27,18 @@ ssd1306_t display;
 // Função que converte a leitura do ADC (sensor integrado) para temperatura em graus Celsius
 float ler_temperatura() {
     adc_select_input(4);
-    uint16_t adc = adc_read();
-    float voltagem = adc * 3.3f / (1 << 12);
-    return 27.0f - (voltagem - 0.706f) / 0.001721f;
+    float soma = 0.0f;  // Variável para acumular as leituras
+
+    // Mudança: média de 100 leituras do ADC
+    for (int i = 0; i < 100; i++) {
+        uint16_t adc = adc_read();
+        float voltagem = adc * 3.3f / (1 << 12);
+        float temp = 27.0f - (voltagem - 0.706f) / 0.001721f;
+        soma += temp;
+        sleep_ms(1);  // Pequeno atraso para maior estabilidade
+    }
+
+    return soma / 100.0f;  // Retorna a média das leituras
 }
 
 // Atualiza o display OLED exibindo o estado do LED e a temperatura atual
@@ -39,14 +48,10 @@ void atualizar_oled(bool led, float temp) {
     snprintf(linha1, sizeof(linha1), "LED: %s", led ? "Ligado" : "Desligado");
     snprintf(linha2, sizeof(linha2), "Temp: %.2f C", temp);
 
-    // Limpa o buffer do display
     memset(display.ram_buffer + 1, 0, display.bufsize - 1);
-
-    // Escreve as mensagens no buffer
     ssd1306_draw_string(display.ram_buffer + 1, 0, 0, linha1);
     ssd1306_draw_string(display.ram_buffer + 1, 0, 16, linha2);
 
-    // Atualiza o conteúdo do display OLED
     ssd1306_command(&display, ssd1306_set_column_address);
     ssd1306_command(&display, 0);
     ssd1306_command(&display, OLED_WIDTH - 1);
@@ -58,6 +63,7 @@ void atualizar_oled(bool led, float temp) {
 
 // Gera dinamicamente uma página HTML contendo o estado do LED e a temperatura atual
 int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
+    // Mudança: adiciona script JavaScript para atualizar apenas o valor da temperatura a cada 2 segundos
     return snprintf(buffer, max_len,
         "<!DOCTYPE html>"
         "<html lang='pt-BR'>"
@@ -73,11 +79,20 @@ int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
             ".desligar {background-color:#dc3545;}"
             ".card {padding:15px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.3);display:inline-block;}"
         "</style>"
+        "<script>"
+        "function atualizarTemperatura() {"
+            "fetch('/temp').then(resp => resp.text()).then(temp => {"
+                "document.getElementById('temp').innerText = temp;"  // Corrigido: sem ' °C'
+            "});"
+        "}"
+        "setInterval(atualizarTemperatura, 2000);"  // Atualiza a cada 2 segundos
+        "window.onload = atualizarTemperatura;"
+        "</script>"
         "</head>"
         "<body>"
         "<div class='card'>"
             "<h3>Status do LED: %s</h3>"
-            "<h3>Temperatura: %.2f &deg;C</h3>"
+            "<h3>Temperatura: <span id='temp'>%.2f</span> &deg;C</h3>"  // °C fora do <span>
             "<a href='/?led=on'><button class='botao ligar'>Ligar LED</button></a>"
             "<a href='/?led=off'><button class='botao desligar'>Desligar LED</button></a>"
         "</div>"
@@ -94,7 +109,30 @@ err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     pbuf_copy_partial(p, req, sizeof(req) - 1, 0);
 
     bool led_ativo = gpio_get(LED_GPIO);
-    
+
+    // Mudança: verifica requisição de temperatura atual (endpoint /temp)
+    if (strstr(req, "GET /temp")) {
+        float temp = ler_temperatura();
+        printf("[HTTP] Atualização AJAX - Temp: %.2f C\n", temp);
+        atualizar_oled(led_ativo, temp);
+
+        char resposta_temp[32];
+        snprintf(resposta_temp, sizeof(resposta_temp), "%.2f", temp);  // Corrigido: envia só número
+
+        char cabecalho[128];
+        snprintf(cabecalho, sizeof(cabecalho),
+                 "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
+                 (int)strlen(resposta_temp));
+
+        tcp_write(pcb, cabecalho, strlen(cabecalho), 0);
+        tcp_write(pcb, resposta_temp, strlen(resposta_temp), 0);
+        tcp_output(pcb);
+
+        tcp_recved(pcb, p->tot_len);
+        pbuf_free(p);
+        return ERR_OK;
+    }
+
     // Verifica se a requisição inclui a ativação ou desativação do LED
     if (strstr(req, "GET /?led=on")) {
         gpio_put(LED_GPIO, 1);
@@ -134,15 +172,13 @@ err_t servidor_aceitar(void *arg, struct tcp_pcb *newpcb, err_t err) {
 // Função principal (entry-point) do firmware
 int main() {
     stdio_init_all();
-    sleep_ms(3000); // Aguarda a estabilização inicial do hardware
+    sleep_ms(3000);
 
-    // Inicialização GPIO e ADC para LED e sensor de temperatura
     gpio_init(LED_GPIO);
     gpio_set_dir(LED_GPIO, GPIO_OUT);
     adc_init();
     adc_set_temp_sensor_enabled(true);
 
-    // Inicialização do barramento I2C e configuração do display OLED
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
@@ -153,7 +189,6 @@ int main() {
     ssd1306_config(&display);
     ssd1306_init();
 
-    // Exibição inicial no display OLED informando inicialização da rede
     memset(display.ram_buffer + 1, 0, display.bufsize - 1);
     ssd1306_draw_string(display.ram_buffer + 1, 0, 0, "Iniciando Wi-Fi...");
     ssd1306_command(&display, ssd1306_set_column_address);
@@ -164,7 +199,6 @@ int main() {
     ssd1306_command(&display, (OLED_HEIGHT / 8) - 1);
     ssd1306_send_data(&display);
 
-    // Inicialização do Wi-Fi em modo AP com DHCP e DNS configurados
     cyw43_arch_init();
     cyw43_arch_enable_ap_mode("picow_test", "password", CYW43_AUTH_WPA2_AES_PSK);
 
@@ -178,7 +212,6 @@ int main() {
     dns_server_t dns_server;
     dns_server_init(&dns_server, &ip);
 
-    // Configuração do servidor TCP (HTTP)
     struct tcp_pcb *pcb = tcp_new_ip_type(IPADDR_TYPE_ANY);
     tcp_bind(pcb, IP_ANY_TYPE, TCP_PORT);
     pcb = tcp_listen_with_backlog(pcb, 1);
@@ -186,13 +219,11 @@ int main() {
 
     printf("[INFO] Acesse: http://192.168.4.1\n");
 
-    // Mensagem final indicando acesso pelo navegador
     memset(display.ram_buffer + 1, 0, display.bufsize - 1);
     ssd1306_draw_string(display.ram_buffer + 1, 0, 0, "Acesse:");
     ssd1306_draw_string(display.ram_buffer + 1, 0, 16, "192.168.4.1");
     ssd1306_send_data(&display);
 
-    // Loop principal do sistema
     while (true) {
         cyw43_arch_poll();
         sleep_ms(10);
