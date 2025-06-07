@@ -43,9 +43,12 @@ project(tarefa_2_protocolos_de_comunicacao C CXX ASM)
 # Inicializa o SDK do Pico
 pico_sdk_init()
 
-# === Adiciona os arquivos fonte ===
+# === Adiciona os arquivos fonte principais e módulos separados ===
 add_executable(tarefa_2_protocolos_de_comunicacao
     tarefa_2_protocolos_de_comunicacao.c
+    http_server.c
+    oled_display.c
+    temperatura.c
     dhcpserver/dhcpserver.c
     dnsserver/dnsserver.c
     inc/ssd1306_i2c.c
