@@ -55,6 +55,7 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
     // Requisição para ler temperatura (AJAX)
     if (strstr(req, "GET /temp")) {
         float temp = ler_temperatura();
+        printf("Temperatura atualizada: %.2f °C\n", temp); // Exibe temperatura no terminal
         atualizar_oled(led_ativo, temp);
 
         char resposta_temp[32];
@@ -78,13 +79,16 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
     if (strstr(req, "GET /?led=on")) {
         gpio_put(LED_GPIO, 1);
         led_ativo = true;
+        printf("LED ligado\n");
     } else if (strstr(req, "GET /?led=off")) {
         gpio_put(LED_GPIO, 0);
         led_ativo = false;
+        printf("LED desligado\n");
     }
 
     // Atualiza temperatura e OLED
     float temp = ler_temperatura();
+    printf("Temperatura atualizada: %.2f °C\n", temp); // Exibe temperatura ao carregar a página
     atualizar_oled(led_ativo, temp);
 
     // Gera HTML dinâmico
