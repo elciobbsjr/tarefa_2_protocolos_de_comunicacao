@@ -14,49 +14,24 @@
 static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err);
 static err_t servidor_aceitar(void *arg, struct tcp_pcb *newpcb, err_t err);
 
+// Gera a página HTML de resposta dinâmica com status do LED e temperatura
 int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
     return snprintf(buffer, max_len,
         "<!DOCTYPE html>"
         "<html lang='pt-BR'>"
-        "<head>"
-        "<meta charset='UTF-8'>"
-        "<title>Controle Pico W</title>"
+        "<head><meta charset='UTF-8'><title>Controle Pico W</title>"
         "<style>"
-            "body {"
-                "font-family:Arial;"
-                "text-align:center;"
-                "margin-top:50px;"
-                "background-color:black;"  // Fundo preto
-                "color:white;"              // Texto branco para contraste
-            "}"
-            ".botao {"
-                "padding:10px 20px;"
-                "font-size:16px;"
-                "border:none;"
-                "border-radius:5px;"
-                "color:#fff;"
-                "margin:10px;"
-            "}"
-            ".ligar {background-color:#28a745;}"
-            ".desligar {background-color:#dc3545;}"
-            ".card {"
-                "padding:15px;"
-                "border-radius:10px;"
-                "box-shadow:0 2px 5px rgba(0,0,0,0.3);"
-                "display:inline-block;"
-                "background-color:#333;"  // Cartão com fundo escuro
-            "}"
+            "body { font-family:Arial; text-align:center; margin-top:50px; background-color:black; color:white; }"
+            ".botao { padding:10px 20px; font-size:16px; border:none; border-radius:5px; color:#fff; margin:10px; }"
+            ".ligar { background-color:#28a745; }"
+            ".desligar { background-color:#dc3545; }"
+            ".card { padding:15px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.3); display:inline-block; background-color:#333; }"
         "</style>"
         "<script>"
-        "function atualizarTemperatura() {"
-            "fetch('/temp').then(resp => resp.text()).then(temp => {"
-                "document.getElementById('temp').innerText = temp;"
-            "});"
-        "}"
+        "function atualizarTemperatura() { fetch('/temp').then(resp => resp.text()).then(temp => { document.getElementById('temp').innerText = temp; }); }"
         "setInterval(atualizarTemperatura, 2000);"
         "window.onload = atualizarTemperatura;"
-        "</script>"
-        "</head>"
+        "</script></head>"
         "<body>"
         "<div class='card'>"
             "<h3>Status do LED: %s</h3>"
@@ -64,11 +39,11 @@ int gerar_html(char *buffer, size_t max_len, bool estado_led, float temp) {
             "<a href='/?led=on'><button class='botao ligar'>Ligar LED</button></a>"
             "<a href='/?led=off'><button class='botao desligar'>Desligar LED</button></a>"
         "</div>"
-        "</body>"
-        "</html>",
+        "</body></html>",
         estado_led ? "Ligado" : "Desligado", temp);
 }
 
+// Processa requisições recebidas
 static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (!p) return tcp_close(pcb);
 
@@ -77,6 +52,7 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
 
     bool led_ativo = gpio_get(LED_GPIO);
 
+    // Requisição para ler temperatura (AJAX)
     if (strstr(req, "GET /temp")) {
         float temp = ler_temperatura();
         atualizar_oled(led_ativo, temp);
@@ -98,6 +74,7 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
         return ERR_OK;
     }
 
+    // Requisição para alterar estado do LED
     if (strstr(req, "GET /?led=on")) {
         gpio_put(LED_GPIO, 1);
         led_ativo = true;
@@ -106,9 +83,11 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
         led_ativo = false;
     }
 
+    // Atualiza temperatura e OLED
     float temp = ler_temperatura();
     atualizar_oled(led_ativo, temp);
 
+    // Gera HTML dinâmico
     int len = gerar_html(resp, sizeof(resp), led_ativo, temp);
     char cabecalho[128];
     snprintf(cabecalho, sizeof(cabecalho),
@@ -123,11 +102,13 @@ static err_t servidor_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t
     return ERR_OK;
 }
 
+// Callback para aceitar novas conexões TCP
 static err_t servidor_aceitar(void *arg, struct tcp_pcb *newpcb, err_t err) {
     tcp_recv(newpcb, servidor_recv);
     return ERR_OK;
 }
 
+// Inicializa o servidor HTTP e configura pino do LED
 void iniciar_http_server() {
     gpio_init(LED_GPIO);
     gpio_set_dir(LED_GPIO, GPIO_OUT);
